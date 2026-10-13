@@ -13,7 +13,8 @@
 <p align="center">
   <a href="#why-agentmods">About</a> ·
   <a href="#how-it-works">How it works</a> ·
-  <a href="#example-token-weather">Example mod</a>
+  <a href="#example-token-weather">Example mod</a> ·
+  <a href="https://github.com/Pheem49/Agentmods.git">GitHub</a>
 </p>
 
 <p align="center">
