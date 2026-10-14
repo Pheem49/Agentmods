@@ -1,0 +1,95 @@
+[
+  {
+    "id": "token-weather",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {},
+      "claude-code": {}
+    }
+  },
+  {
+    "id": "task-checklist",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "token-meter",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "tool-guard",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "turn-journal",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "context-compass",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "review-checklist",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "session-counter",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {}
+    }
+  },
+  {
+    "id": "blast-radius",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {},
+      "claude-code": {}
+    }
+  },
+  {
+    "id": "replay-theater",
+    "adaptationPrompt": true,
+    "agents": {
+      "mint": {},
+      "claude-code": {}
+    }
+  },
+  {
+    "id": "session-handoff",
+    "adaptationPrompt": true,
+    "agents": {}
+  },
+  {
+    "id": "tool-timeline",
+    "adaptationPrompt": true,
+    "agents": {}
+  },
+  {
+    "id": "checks-summary",
+    "adaptationPrompt": true,
+    "agents": {}
+  },
+  {
+    "id": "workspace-map",
+    "adaptationPrompt": true,
+    "agents": {}
+  }
+]

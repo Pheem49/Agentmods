@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": { "api/stats.mjs": { "maxDuration": 15 } },
+  "rewrites": [
+    { "source": "/api/prompt-copies", "destination": "/api/stats?route=prompt-copies" },
+    { "source": "/api/mods/:modId/prompt-copy", "destination": "/api/stats?route=mods/:modId/prompt-copy" }
+  ]
+}

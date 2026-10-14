@@ -6,3 +6,7 @@ dist/
 .aws/
 *.log
 .DS_Store
+
+.agentmods/
+
+.vercel/

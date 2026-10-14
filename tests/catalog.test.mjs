@@ -39,3 +39,23 @@ test('agent filters include shared entries while both excludes single-agent entr
  assert.deepEqual(filterMods(catalog,{agent:'claude-code',category:'Workflow'}).map(mod=>mod.id),['replay-theater']);
  assert.equal(filterMods(catalog,{agent:'both',view:'saved',saved:[]}).length,0);
 });
+test('neutral recipes appear in the collection without implying Mint or Claude compatibility', async () => {
+ const { readMods } = await import('../scripts/read-mods.mjs');
+ const catalog = await readMods();
+ const ids = ['session-handoff', 'tool-timeline', 'checks-summary', 'workspace-map'];
+ for (const id of ids) {
+  assert.ok(filterMods(catalog).some(mod => mod.id === id));
+  assert.ok(filterMods(catalog, {view:'saved', saved:[id]}).some(mod => mod.id === id));
+  for (const agent of ['mint', 'claude-code', 'both']) {
+   assert.ok(!filterMods(catalog, {agent}).some(mod => mod.id === id));
+  }
+  assert.ok(!filterMods(catalog, {view:'source'}).some(mod => mod.id === id));
+ }
+});
+
+test('Most copied sorts shared totals descending, preserves tie order, and combines filters',()=>{
+ assert.deepEqual(filterMods(mods,{sort:'copies',promptCopies:{meter:2,tasks:8}}).map(mod=>mod.id),['tasks','meter']);
+ assert.deepEqual(filterMods(mods,{sort:'copies',promptCopies:{meter:8,tasks:8}}).map(mod=>mod.id),['meter','tasks']);
+ assert.deepEqual(filterMods(mods,{sort:'copies',promptCopies:{meter:2,tasks:8},category:'Context'}).map(mod=>mod.id),['meter']);
+ assert.equal(mods[0].id,'meter');
+});

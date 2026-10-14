@@ -63,6 +63,51 @@ test('legacy entries remain Mint-only and have no invented install command', () 
  assert.equal(mod.agents.mint.prompt, mod.prompt);
  assert.equal(mod.agents.mint.installCommand, null);
 });
+test('adaptation content stays separate from implementation prompts and source', () => {
+ const neutral = 'Create a mod for my current agent.\n\nInspect its extension APIs.';
+ const [mod] = loadModFiles({[path]:document.replace('## Prompt', `## Adaptation prompt\n\n${neutral}\n\n## Prompt`)});
+ assert.equal(mod.adaptationPrompt, neutral);
+ assert.equal(mod.agents.mint.prompt, mod.prompt);
+ assert.ok(!mod.prompt.includes(neutral));
+ assert.throws(() => loadModFiles({[path]:document.replace('## Prompt', '## Adaptation prompt\nFirst.\n\n## Adaptation prompt\nSecond.\n\n## Prompt')}), /Duplicate Adaptation prompt section/);
+});
+test('every catalog mod provides an adaptation recipe without platform install instructions', async () => {
+ const { readMods } = await import('../scripts/read-mods.mjs');
+ for (const mod of await readMods()) {
+  assert.match(mod.adaptationPrompt, /First identify the current agent harness/, mod.id);
+  assert.match(mod.adaptationPrompt, /Do not invent APIs, events, or usage measurements/, mod.id);
+  assert.match(mod.adaptationPrompt, /explain how to enable it/, mod.id);
+  assert.doesNotMatch(mod.adaptationPrompt, /Make me a Mint mod|\.mint-mods\/|claude plugin install/, mod.id);
+ }
+});
+test('neutral-only recipes use the body without claiming an agent implementation', () => {
+ const text = document.replace('tags:', 'agents: {}\nadaptationPrompt: body\nrequiredCapabilities: [Conversation access, Panel output]\ntags:');
+ const [mod] = loadModFiles({[path]:text});
+ assert.equal(mod.adaptationPrompt, mod.prompt);
+ assert.deepEqual(mod.agents, {});
+ assert.deepEqual(mod.requiredCapabilities, ['Conversation access', 'Panel output']);
+ assert.equal(mod.kind, 'recipe');
+ for (const broken of [text.replace('adaptationPrompt: body', 'adaptationPrompt: true'), text.replace('requiredCapabilities: [Conversation access, Panel output]', 'requiredCapabilities: panel')]) {
+  assert.throws(() => loadModFiles({[path]:broken}), /\/mods\/example\/MOD\.md/);
+ }
+});
+test('new recipes retain their full specifications and have no platform package or source', async () => {
+ const { readMods } = await import('../scripts/read-mods.mjs');
+ const catalog = await readMods();
+ for (const id of ['session-handoff', 'tool-timeline', 'checks-summary', 'workspace-map']) {
+  const mod = catalog.find(mod => mod.id === id);
+  assert.ok(mod, id);
+  assert.equal(mod.adaptationPrompt, mod.prompt);
+  assert.deepEqual(mod.agents, {});
+  assert.equal(mod.source, null);
+  assert.equal(mod.kind, 'recipe');
+  assert.ok(mod.preview, id);
+  assert.ok(mod.requiredCapabilities.length >= 3, id);
+  for (const heading of ['What it is and what it can do', 'What it should look like', 'State and access', 'Validation examples', 'Compatibility and completion']) {
+   assert.ok(mod.prompt.includes(`### ${heading}`), `${id}: ${heading}`);
+  }
+ }
+});
 test('each agent gets its own prompt, install command, source and compatibility', () => {
  const text=document.replace('tags:', `agents:
   mint:
@@ -125,4 +170,26 @@ test('all upstream sample entries have source, install commands and every origin
   assert.ok(config.installCommand.includes(`${id}@claude-code-playground-mods`));
   assert.equal(config.license || mod.license,'Apache-2.0');
  }
+});
+
+test('catalog dates, changelog and summaries have file-scoped validation',()=>{
+ const metadata=`updated: 2026-10-14
+overview: {purpose: See usage, placement: Above the prompt, actions: [Reset]}
+changelog: [{date: 2026-10-14, scope: prompt, summary: Improved reading states}]
+`;
+ const text=document.replace('tags:',metadata+'tags:');const [mod]=loadModFiles({[path]:text});
+ assert.equal(mod.overview.placement,'Above the prompt');assert.equal(mod.updated,'2026-10-14');assert.equal(mod.changelog[0].scope,'prompt');
+ for(const broken of [text.replace('2026-10-14','2026-02-30'),text.replace('scope: prompt','scope: security'),text.replace('placement: Above the prompt, ',''),text.replace('date: 2026-10-14','date: 2026-10-15')]) assert.throws(()=>loadModFiles({[path]:broken}), /\/mods\/example\/MOD\.md/);
+});
+test('verified runtime status requires evidence and applies only to its harness',()=>{
+ const metadata=`agents:
+  mint:
+    prompt: body
+    verification: {status: verified, date: 2026-10-14, environment: Mint terminal fixture, evidence: https://example.com/run/1}
+  claude-code:
+    prompt: Claude prompt
+`;
+ const text=document.replace('tags:',metadata+'tags:');const [mod]=loadModFiles({[path]:text});
+ assert.equal(mod.agents.mint.verification.status,'verified');assert.equal(mod.agents['claude-code'].verification.status,'not-verified');
+ for(const broken of [text.replace(', evidence: https://example.com/run/1',''),text.replace('status: verified','status: pass'),text.replace('https://example.com/run/1','javascript:alert(1)')]) assert.throws(()=>loadModFiles({[path]:broken}), /\/mods\/example\/MOD\.md/);
 });

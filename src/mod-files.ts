@@ -1,5 +1,5 @@
 import { parse } from 'yaml';
-import type { Agent, AgentConfig, Category, Mod, Screenshot } from './types.ts';
+import type { Agent, AgentConfig, Category, Mod, Screenshot, Overview, Verification, Change } from './types.ts';
 
 type Files = Record<string, string>;
 const categories: Category[] = ['Context', 'Workflow', 'Safety', 'Utilities'];
@@ -17,6 +17,46 @@ function metadataList(data: Record<string, unknown>, key: string): string[] {
   }
   return value.map(item => item.trim());
 }
+function dateText(data: Record<string, unknown>, key: string, required = false): string | null {
+  const value = metadataText(data, key, required);
+  if (value !== null && (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value)) {
+    throw new Error(`"${key}" must be a real YYYY-MM-DD date`);
+  }
+  return value;
+}
+function overview(value: unknown): Overview | undefined {
+  if (value === undefined) return undefined;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('"overview" must be a mapping');
+  const data = value as Record<string, unknown>;
+  return {purpose: metadataText(data, 'purpose')!, placement: metadataText(data, 'placement')!, actions: metadataList(data, 'actions')};
+}
+function verification(value: unknown): Verification {
+  if (value === undefined) return {status:'not-verified',date:null,environment:null,evidence:null,notes:null};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('"verification" must be a mapping');
+  const data = value as Record<string, unknown>;
+  const status = metadataText(data, 'status') as Verification['status'];
+  if (!['not-verified', 'verified', 'needs-review'].includes(status)) throw new Error('Invalid verification status');
+  const date = dateText(data, 'date');
+  const environment = metadataText(data, 'environment', false);
+  const evidence = metadataText(data, 'evidence', false);
+  if (evidence && !/^https:\/\//i.test(evidence)) throw new Error('Verification evidence must be an HTTPS URL');
+  if (status === 'verified' && (!date || !environment || !evidence)) throw new Error('Verified implementations need a date, environment, and evidence URL');
+  return {status,date,environment,evidence,notes:metadataText(data,'notes',false)};
+}
+function changes(value: unknown, updated: string | null): Change[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) throw new Error('"changelog" must be a list');
+  const entries = value.map(item => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw new Error('Invalid changelog entry');
+    const data = item as Record<string, unknown>;
+    const date = dateText(data, 'date', true)!;
+    const scope = metadataText(data, 'scope') as Change['scope'];
+    if (!['prompt', 'source', 'catalog'].includes(scope)) throw new Error('Invalid changelog scope');
+    if (!updated || date > updated) throw new Error('Changelog dates must not exceed the updated date');
+    return {date,scope,summary:metadataText(data,'summary')!};
+  });
+  return entries.sort((a,b)=>b.date.localeCompare(a.date));
+}
 function sections(body: string): Record<string, string> {
   const result: Record<string, string> = {};
   const lines = body.split('\n');
@@ -29,7 +69,7 @@ function sections(body: string): Record<string, string> {
       if (!fence) fence = { char: marker[1][0], length: marker[1].length };
       else if (marker[1][0] === fence.char && marker[1].length >= fence.length && /^ {0,3}(`{3,}|~{3,})\s*$/.test(line)) fence = null;
     }
-    const heading = !fence && line.match(/^## (Description|Features|Prompt)\s*$/);
+    const heading = !fence && line.match(/^## (Description|Features|Adaptation prompt|Prompt)\s*$/);
     if (heading) {
       current = heading[1];
       if (current in result) throw new Error(`Duplicate ${current} section`);
@@ -88,18 +128,23 @@ export function loadModFiles(documents: Files, sources: Files = {}, previews: Fi
       const content = sections(match[2]);
       if (!content.Description) throw new Error('Missing or empty ## Description section');
       if (!content.Prompt) throw new Error('Missing or empty ## Prompt section');
+      if (data.adaptationPrompt !== undefined && data.adaptationPrompt !== 'body') {
+        throw new Error('"adaptationPrompt" must be "body" when provided');
+      }
+      const adaptationPrompt = data.adaptationPrompt === 'body' ? content.Prompt : content['Adaptation prompt'] || undefined;
       const source = asset(sources, folder[1], metadataText(data, 'source', false), 'source');
       const preview = asset(previews, folder[1], metadataText(data, 'preview', false), 'preview');
       const repo = metadataText(data, 'repository', false);
       if (repo && !/^https:\/\//i.test(repo)) throw new Error('"repository" must be an HTTPS URL');
       const compatibility = metadataText(data, 'compatibility')!;
+      const updated = dateText(data, 'updated');
       const agents: Partial<Record<Agent, AgentConfig>> = {};
       if (data.agents === undefined) {
         // Existing catalog files describe Mint mods only.
-        agents.mint = { prompt: content.Prompt, compatibility, source, installCommand: null, installNotes: null, screenshots: [] };
+        agents.mint = { prompt: content.Prompt, compatibility, source, installCommand: null, installNotes: null, screenshots: [], verification: verification(undefined) };
       } else {
-        if (!data.agents || typeof data.agents !== 'object' || Array.isArray(data.agents) || !Object.keys(data.agents).length) {
-          throw new Error('"agents" must be a non-empty mapping of mint and/or claude-code');
+        if (!data.agents || typeof data.agents !== 'object' || Array.isArray(data.agents) || (!Object.keys(data.agents).length && !adaptationPrompt)) {
+          throw new Error('"agents" must map mint and/or claude-code, or be empty for an adaptation recipe');
         }
         for (const [key, value] of Object.entries(data.agents)) {
           if (key !== 'mint' && key !== 'claude-code') throw new Error(`Unknown agent: ${key}`);
@@ -115,6 +160,7 @@ export function loadModFiles(documents: Files, sources: Files = {}, previews: Fi
             installNotes: metadataText(config, 'installNotes', false),
             author: metadataText(config, 'author', false), repository,
             screenshots: screenshots(config.screenshots, previews, folder[1]),
+            overview: overview(config.overview), verification: verification(config.verification),
             license: metadataText(config, 'license', false), version: metadataText(config, 'version', false),
             source: asset(sources, folder[1], metadataText(config, 'source', false), 'source'),
           };
@@ -127,9 +173,11 @@ export function loadModFiles(documents: Files, sources: Files = {}, previews: Fi
         description: content.Description,
         features: (content.Features ?? '').split('\n').filter(line => /^\s*-\s+/.test(line)).map(line => line.replace(/^\s*-\s+/, '').trim()),
         tags: metadataList(data, 'tags'), permissions: metadataList(data, 'permissions'),
+        requiredCapabilities: metadataList(data, 'requiredCapabilities'),
+        overview: overview(data.overview), updated, changelog: changes(data.changelog, updated),
         featured: data.featured === true, kind: source || Object.values(agents).some(config => config.source) ? 'source' : 'recipe',
         version: metadataText(data, 'version', false), license: metadataText(data, 'license', false),
-        source, prompt: content.Prompt, repo, agents, ...(preview ? { preview } : {}),
+        source, adaptationPrompt, prompt: content.Prompt, repo, agents, ...(preview ? { preview } : {}),
       };
       return { mod, order: typeof data.order === 'number' ? data.order : Number.MAX_SAFE_INTEGER };
     } catch (error) {
