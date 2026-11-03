@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useDeferredValue } from 'react';
-import { ArrowUpRight, ArrowRight, ArrowLeft, Search, Copy, Check, Bookmark, X, CodeXml, ChevronDown, CloudSun, ListChecks, Gauge, ShieldCheck, NotebookText, Compass, ClipboardCheck, Hash, Terminal, SlidersHorizontal, Plus, Menu, ExternalLink, Sparkles, Send, Activity, FolderTree } from 'lucide-react';
+import { ArrowUpRight, ArrowRight, ArrowLeft, Search, Copy, Check, Bookmark, X, CodeXml, ChevronDown, CloudSun, ListChecks, Gauge, ShieldCheck, NotebookText, Compass, ClipboardCheck, Hash, Terminal, SlidersHorizontal, Plus, Menu, ExternalLink, Sparkles, Send, Activity, FolderTree, Star, Sun, Moon } from 'lucide-react';
 import mods from './data/mods';
 import type { Mod, Agent, AgentConfig, Category, CatalogOptions } from './types';
 import type { MouseEvent } from 'react';
@@ -52,7 +52,68 @@ function CopyButton({ text, compact = false, label = 'Copy prompt', onNotice, ag
 }
 function SaveButton({ mod, saved, onToggle, full = false }: { mod: Mod; saved: string[]; onToggle: (id: string) => void; full?: boolean }) { const active = saved.includes(mod.id); return <button className={`save-button ${active ? 'active' : ''} ${full ? 'full' : ''}`} onClick={() => onToggle(mod.id)} aria-pressed={active} aria-label={`${active ? 'Unsave' : 'Save'} ${mod.name}`} title={active ? 'Remove from saved' : 'Save mod'}><Bookmark size={16} fill={active ? 'currentColor' : 'none'} />{full && <span>{active ? 'Saved' : 'Save mod'}</span>}</button>; }
 
+function GitHubStarButton() {
+  const [stars, setStars] = useState<number | null>(() => {
+    try {
+      const cached = sessionStorage.getItem('agentmods:github-stars');
+      return cached !== null ? parseInt(cached, 10) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (stars !== null) return;
+    let active = true;
+    fetch('https://api.github.com/repos/Pheem49/Agentmods')
+      .then(res => (res.ok ? res.json() : Promise.reject(new Error('Failed to load stars'))))
+      .then(data => {
+        if (active && typeof data.stargazers_count === 'number') {
+          setStars(data.stargazers_count);
+          try {
+            sessionStorage.setItem('agentmods:github-stars', String(data.stargazers_count));
+          } catch {}
+        }
+      })
+      .catch(() => {
+        if (active && stars === null) setStars(0);
+      });
+    return () => { active = false; };
+  }, [stars]);
+
+  return (
+    <a
+      href="https://github.com/Pheem49/Agentmods"
+      target="_blank"
+      rel="noreferrer"
+      className="github-star-btn"
+      aria-label={`Star Pheem49/Agentmods on GitHub (${stars ?? 0} stars)`}
+      title="Star Pheem49/Agentmods on GitHub"
+    >
+      <span className="star-btn-label">
+        <Star size={13} className="star-icon" fill="currentColor" />
+        <span>Star</span>
+      </span>
+      <span className="star-btn-count">
+        {stars !== null ? stars.toLocaleString() : '0'}
+      </span>
+    </a>
+  );
+}
+
 export default function App() {
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try {
+      const saved = localStorage.getItem('agentmods:theme');
+      if (saved === 'light' || saved === 'dark') return saved;
+      if (window.matchMedia?.('(prefers-color-scheme: light)').matches) return 'light';
+    } catch {}
+    return 'dark';
+  });
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem('agentmods:theme', theme); } catch {}
+  }, [theme]);
   const [route, setRoute] = useState(getRoute); const [saved, setSaved] = useState(readSaved);
   const [query, setQuery] = useState(''); const [category, setCategory] = useState<Category | 'All'>('All'); const [view, setView] = useState<CatalogOptions['view']>('all'); const [sort, setSort] = useState<CatalogOptions['sort']>('featured'); const [agentFilter, setAgentFilter] = useState<CatalogOptions['agent']>('all'); const [notice, setNotice] = useState(''); const [menu, setMenu] = useState(false);
   const searchRef = useRef<HTMLInputElement | null>(null); const noticeTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined); const mainRef = useRef<HTMLElement | null>(null);
@@ -60,6 +121,9 @@ export default function App() {
   const deferredQuery = useDeferredValue(query);
   const selected = route[0] === 'mods' ? mods.find(m => m.id === route[1]) : null;
   const results = filterMods(mods, {query:deferredQuery,category,view,saved,sort,agent:agentFilter,promptCopies:copies.snapshot?.counts});
+  const [visibleCount, setVisibleCount] = useState(20);
+  useEffect(() => { setVisibleCount(20); }, [deferredQuery, category, view, sort, agentFilter]);
+  const paginatedResults = results.slice(0, visibleCount);
   useEffect(() => { const change = () => { setRoute(getRoute()); setMenu(false); window.scrollTo({top:0,behavior:'instant'}); requestAnimationFrame(() => mainRef.current?.focus({preventScroll:true})); }; window.addEventListener('hashchange', change); return () => window.removeEventListener('hashchange', change); }, []);
   useEffect(() => { document.title = selected ? `${selected.name} — Agentmods` : 'Agentmods — Make your agent your own.'; }, [selected]);
   useEffect(() => { const handler = (e: KeyboardEvent) => { if (e.key === '/' && !['INPUT','TEXTAREA','SELECT'].includes(document.activeElement?.tagName || '') && !e.metaKey && !e.ctrlKey && !route.length) {e.preventDefault();searchRef.current?.focus();} if (e.key === 'Escape') {setMenu(false); searchRef.current?.blur();} }; document.addEventListener('keydown', handler); return () => document.removeEventListener('keydown', handler); }, [route]);
@@ -70,9 +134,12 @@ export default function App() {
   const home = !route.length;
   return <>
     <a className="skip-link" href="#main" onClick={e=>{e.preventDefault();mainRef.current?.focus();mainRef.current?.scrollIntoView();}}>Skip to content</a>
-    <header className="header"><a href="#/" className="brand" aria-label="Agentmods home"><Mark small /><span>Agentmods</span><span className="brand-slash">/</span><span className="brand-description">the mod directory</span></a>
-      <button className="mobile-menu" aria-expanded={menu} aria-label="Toggle navigation" onClick={()=>setMenu(!menu)}>{menu ? <X size={22} /> : <Menu size={22} />}</button>
-      <nav aria-label="Main navigation" className={menu ? 'open' : ''}><a href="#/" className={home || selected ? 'current' : ''}>Explore</a><a href="#/collections" className={route[0]==='collections' ? 'current' : ''}>Collections</a><a href="#/guide" className={route[0]==='guide' ? 'current' : ''}>How it works</a><a href="https://github.com/Pheem49/Agentmods.git" target="_blank" rel="noreferrer" className="github-link"><CodeXml size={16} /><span>Agentmods on GitHub</span><ArrowUpRight size={13} /></a></nav>
+    <header className="header-bar">
+      <div className="header">
+        <a href="#/" className="brand" aria-label="Agentmods home"><Mark small /><span>Agentmods</span><span className="brand-slash">/</span><span className="brand-description">the mod directory</span></a>
+        <button className="mobile-menu" aria-expanded={menu} aria-label="Toggle navigation" onClick={()=>setMenu(!menu)}>{menu ? <X size={22} /> : <Menu size={22} />}</button>
+        <nav aria-label="Main navigation" className={menu ? 'open' : ''}><a href="#/" className={home || selected ? 'current' : ''}>Explore</a><a href="#/collections" className={route[0]==='collections' ? 'current' : ''}>Collections</a><a href="#/guide" className={route[0]==='guide' ? 'current' : ''}>How it works</a><GitHubStarButton /><button type="button" className="theme-toggle" onClick={()=>setTheme(t=>t==='dark'?'light':'dark')} aria-label={theme==='dark'?'Switch to light theme':'Switch to dark theme'} title={theme==='dark'?'Switch to light theme':'Switch to dark theme'}>{theme==='dark'?<Sun size={15}/>:<Moon size={15}/>}</button></nav>
+      </div>
     </header>
     <main id="main" tabIndex={-1} ref={mainRef} className={!home ? 'page-main' : ''}>
     {home ? <>
@@ -82,15 +149,16 @@ export default function App() {
         <div className="search-row"><Search size={19} aria-hidden="true"/><label className="sr-only" htmlFor="mod-search">Search mods</label><input id="mod-search" ref={searchRef} value={query} onChange={e=>setQuery(e.target.value)} placeholder="Find your next little upgrade…" autoComplete="off"/>{query ? <button onClick={()=>{setQuery('');searchRef.current?.focus();}} aria-label="Clear search"><X size={17}/></button> : <kbd>/</kbd>}</div>
         <div className="filter-row"><div className="tabs" aria-label="Mod format">{([['all','All mods'],['source','Source included'],['saved','Saved']] as const).map(([id,label])=><button key={id} className={view===id?'selected':''} aria-pressed={view===id} onClick={()=>setView(id)}>{label}{id==='saved' && <span>{saved.length}</span>}</button>)}</div><div className="sort-control"><SlidersHorizontal size={13} aria-hidden="true"/><label htmlFor="sort" className="sr-only">Sort mods</label><select id="sort" value={sort} onChange={e=>setSort(e.target.value as CatalogOptions['sort'])}><option value="featured">Curated order</option><option value="name">Name A–Z</option><option value="copies" disabled={!copies.snapshot}>Most copied</option></select><ChevronDown size={12} aria-hidden="true"/></div></div>
         <div className="agent-filter"><label htmlFor="agent-filter">Specific implementation</label><select id="agent-filter" value={agentFilter} onChange={e=>setAgentFilter(e.target.value as CatalogOptions['agent'])}><option value="all">All recipes</option><option value="mint">Mint</option><option value="claude-code">Claude Code</option><option value="both">Mint + Claude Code</option></select></div><div className="topics" aria-label="Filter by category">{categories.map(topic=><button key={topic} onClick={()=>setCategory(topic)} aria-pressed={category===topic} className={category===topic?'selected':''}>{topic}</button>)}</div>
-        <div className="list-head"><span>Mod</span><span>Category</span><span>Readiness</span><span>Prompt copies</span><span /></div>
-        <div className="mod-list">{results.map(mod=><div className="mod-row" key={mod.id}><a href={`#/mods/${mod.id}`} className="mod-main"><span className={`mod-icon ${mod.icon}`}><ModIcon mod={mod}/></span><div><div className="mod-name">{mod.name}{mod.featured && <span className="featured-label">Featured</span>}</div><p>{mod.description.split('. ')[0]}.</p><span className="agent-badge">{supportLabel(mod)}</span><span className="mobile-copy-count">{copyCount(mod.id,copies.snapshot,copies.status)} prompt copies</span><span className="mod-author">{mod.author} <span>/ {mod.id}</span></span></div></a><a href={`#/mods/${mod.id}`} className="row-category">{mod.category}</a><a href={`#/mods/${mod.id}`} className="format-badge">{formatLabel(mod)}</a><span className="row-copy-count" title={copies.status==='unavailable'?'Last reported total; live statistics unavailable':'Successful prompt copies across the catalog service'}>{copyCount(mod.id,copies.snapshot,copies.status)}</span><div className="row-actions"><SaveButton mod={mod} saved={saved} onToggle={toggleSaved}/><a href={`#/mods/${mod.id}`} aria-label={`View ${mod.name}`} className="row-arrow"><ArrowUpRight size={18}/></a></div></div>)}</div>
+        <div className="list-head"><span className="col-index">#</span><span className="col-mod">Mod</span><span className="col-category">Category</span><span className="col-readiness">Readiness</span><span className="col-copies">Prompt copies</span><span className="col-actions" /></div>
+        <div className="mod-list">{paginatedResults.map((mod, index)=><div className="mod-row" key={mod.id}><span className="row-index">{index + 1}</span><a href={`#/mods/${mod.id}`} className="mod-main"><span className={`mod-icon ${mod.icon}`}><ModIcon mod={mod}/></span><div><div className="mod-name">{mod.name}{mod.featured && <span className="featured-label">Featured</span>}</div><p>{mod.description.split('. ')[0]}.</p><span className="agent-badge">{supportLabel(mod)}</span><span className="mobile-copy-count">{copyCount(mod.id,copies.snapshot,copies.status)} prompt copies</span><span className="mod-author">{mod.author} <span>/ {mod.id}</span></span></div></a><a href={`#/mods/${mod.id}`} className="row-category">{mod.category}</a><a href={`#/mods/${mod.id}`} className="format-badge">{formatLabel(mod)}</a><span className="row-copy-count" title={copies.status==='unavailable'?'Last reported total; live statistics unavailable':'Successful prompt copies across the catalog service'}>{copyCount(mod.id,copies.snapshot,copies.status)}</span><div className="row-actions"><SaveButton mod={mod} saved={saved} onToggle={toggleSaved}/><a href={`#/mods/${mod.id}`} aria-label={`View ${mod.name}`} className="row-arrow"><ArrowUpRight size={18}/></a></div></div>)}</div>
+        {results.length > visibleCount && <div className="see-more-row"><button type="button" className="outline-button see-more-button" onClick={()=>setVisibleCount(c=>c+20)}><span>See more</span><ChevronDown size={14} aria-hidden="true"/></button></div>}
         {!results.length && <div className="empty-state"><Search size={30}/><h3>{view==='saved' && !saved.length ? 'Your collection starts here.' : 'No mods found.'}</h3><p>{view==='saved' && !saved.length ? 'Save a mod with the bookmark button to find it here later.' : 'Try another search or clear the filters.'}</p><button className="outline-button" onClick={()=>{setQuery('');setCategory('All');setView('all');setAgentFilter('all');}}>Browse all mods <ArrowRight size={15}/></button></div>}
-        <div className="list-footer"><span aria-live="polite">Showing {results.length} of {mods.length} mods & recipes</span><span>{copies.status==='unavailable'?(copies.snapshot?'Statistics unavailable · showing last reported totals':'Copy statistics unavailable'):copies.snapshot?`Prompt copies since ${displayDate(copies.snapshot.since.slice(0,10))}`:'Loading copy statistics…'}</span></div>
+        <div className="list-footer"><span aria-live="polite">Showing {Math.min(visibleCount, results.length)} of {results.length} mods & recipes</span><span>{copies.status==='unavailable'?(copies.snapshot?'Statistics unavailable · showing last reported totals':'Copy statistics unavailable'):copies.snapshot?`Prompt copies since ${displayDate(copies.snapshot.since.slice(0,10))}`:'Loading copy statistics…'}</span></div>
       </section>
       <section className="bottom-banner"><div className="banner-symbol"><Mark /></div><div><h2>A prompt is just the beginning.</h2><p>Make it your own. Change the colors, the behavior, the little details.</p></div><a href="#/guide">How it works <ArrowUpRight size={17}/></a></section>
     </> : selected ? <Detail key={selected.id} mod={selected} saved={saved} onToggle={toggleSaved} notify={notify} copies={copies} /> : route[0]==='collections' ? <section className="collections-page"><Breadcrumb current="Collections"/><h1>A place for every little upgrade.</h1><p className="page-description">Browse by what you want your agent to do better.</p><div className="collection-grid">{categories.slice(1).map(topic=><button key={topic} onClick={()=>explore(topic)}><span className="collection-count">{mods.filter(m=>m.category===topic).length} mods & recipes</span><h2>{topic}</h2><p>{categoryDescriptions[topic as Category]}</p><ArrowUpRight size={24}/></button>)}</div></section> : route[0]==='guide' ? <Guide /> : <section className="not-found"><h1>This mod isn’t in the collection.</h1><p>The link may have changed. Explore the directory to find your next mod.</p><a href="#/" className="outline-button">Back to all mods <ArrowRight size={16}/></a></section>}
     </main>
-    <footer><a href="#/" className="footer-brand"><Mark small />Agentmods</a><span>Make your agent your own.</span><div><a href="#/guide">Getting started</a><a href="https://github.com/Pheem49/Agentmods.git" target="_blank" rel="noreferrer">GitHub <ArrowUpRight size={13}/></a></div></footer>
+    <footer><a href="#/" className="footer-brand"><Mark small />Agentmods</a><span>Make your agent your own.</span><div><a href="#/guide">Getting started</a><a href="https://github.com/Pheem49/Agentmods" target="_blank" rel="noreferrer">GitHub <ArrowUpRight size={13}/></a></div></footer>
     <div className={`toast ${notice ? 'visible' : ''}`} role="status" aria-live="polite">{notice && <><Check size={16}/><span>{notice}</span><button onClick={()=>setNotice('')} aria-label="Dismiss notification"><X size={15}/></button></>}</div>
   </>;
 }
